@@ -17,7 +17,7 @@ exports.login = async (req, res) => {
   if (user) {
     req.session.username = username;
 
-    //FORCE SAVE SESSION
+  
     req.session.save(err => {
       if (err) {
         return res.status(500).json({ status: "error", message: "Session error" });
