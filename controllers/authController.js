@@ -1,35 +1,117 @@
+const bcrypt = require("bcryptjs");
 const User = require("../models/User");
+const sendMail = require("../utils/sendMail");
 
 exports.login = async (req, res) => {
-  const { username, password } = req.body;
+  try {
+    const email = req.body.email.trim();
+    const password = req.body.password.trim();
 
-  const user = await User.findOne({ username, password });
+    const user = await User.findOne({ email, password });
 
-  // if (user) {
-  //   console.log(req.session);
-  //   req.session.username = username;
+    if (!user) {
+      return res.json({ status: "error", message: "Invalid credentials" });
+    }
 
-  //   return res.json({ status: "success" });
-  // }
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-  // res.json({ status: "error", message: "Invalid credentials" });
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    await user.save();
 
-  if (user) {
-    req.session.username = username;
+    // EMAIL CONTENT
+    await sendMail(
+      email,
+      "Your EMS Login OTP",
+      `
+        <div style="font-family: Arial, sans-serif; padding: 20px; background:#f4f4f4;">
+          <div style="max-width:500px;margin:auto;background:white;padding:20px;border-radius:10px;">
+            
+            <h2 style="text-align:center;color:#8b0000;">EMS Login Verification</h2>
 
-  
-    req.session.save(err => {
+            <p>Hello,</p>
+            <p>Your One-Time Password (OTP) is:</p>
+
+            <div style="text-align:center;margin:25px 0;">
+              <span style="font-size:30px;letter-spacing:6px;font-weight:bold;color:#333;">
+                ${otp}
+              </span>
+            </div>
+
+            <p>This OTP is valid for <b>5 minutes</b>.</p>
+            <p style="color:gray;font-size:12px;">
+              Do not share this OTP with anyone.
+            </p>
+
+            <hr/>
+
+            <p style="text-align:center;">EMS Team</p>
+
+          </div>
+        </div>
+      `
+    );
+
+    return res.json({ status: "otp_sent" });
+
+  } catch (err) {
+    console.log("LOGIN ERROR:", err);
+    return res.status(500).json({
+      status: "error",
+      message: err.message
+    });
+  }
+};
+
+exports.verifyOTP = async (req, res) => {
+  try {
+    const email = req.body.email.trim();
+    const otp = req.body.otp.trim();
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.json({ status: "error", message: "User not found" });
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      return res.json({ status: "error", message: "OTP not generated" });
+    }
+
+    if (user.otp !== otp || user.otpExpiry.getTime() < Date.now()) {
+      return res.json({ status: "error", message: "Invalid or expired OTP" });
+    }
+
+    req.session.user = email;
+
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    req.session.save((err) => {
       if (err) {
+        console.log("SESSION ERROR:", err);
         return res.status(500).json({ status: "error", message: "Session error" });
       }
+
       return res.json({ status: "success" });
     });
-  } else {
-    res.json({ status: "error", message: "Invalid credentials" });
+  } catch (err) {
+    console.log("VERIFY OTP ERROR:", err);
+    return res.status(500).json({
+      status: "error",
+      message: err.message
+    });
   }
-};  
+};
 
 exports.logout = (req, res) => {
-  req.session.destroy();
-  res.json({ status: "logged_out" });
+  req.session.destroy((err) => {
+    if (err) {
+      console.log("LOGOUT ERROR:", err);
+      return res.status(500).json({ status: "error", message: "Logout failed" });
+    }
+
+    return res.json({ status: "logged_out" });
+  });
 };

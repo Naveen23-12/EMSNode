@@ -18,10 +18,10 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-     secure: false,
-     httpOnly: true,
-     sameSite: "lax"
-    }
+    secure: false,
+    httpOnly: true,
+    sameSite: "lax"
+  }
 }));
 
 app.use("/api", require("./routes/authRoutes"));
