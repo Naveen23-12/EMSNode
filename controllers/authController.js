@@ -1,7 +1,11 @@
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const sendMail = require("../utils/sendMail");
 
+const SECRET = "mysecretkey";
+
+// SIGNUP
 exports.registerUser = async (req, res) => {
   try {
     const email = req.body.email.trim();
@@ -67,7 +71,7 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-// LOGIN
+// LOGIN -> CHECK PASSWORD + SEND OTP
 exports.login = async (req, res) => {
   try {
     const email = req.body.email.trim();
@@ -124,7 +128,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// VERIFY OTP
+// VERIFY OTP -> CREATE JWT
 exports.verifyOTP = async (req, res) => {
   try {
     const email = req.body.email.trim();
@@ -144,19 +148,19 @@ exports.verifyOTP = async (req, res) => {
       return res.json({ status: "error", message: "Invalid or expired OTP" });
     }
 
-    req.session.user = email;
-
     user.otp = null;
     user.otpExpiry = null;
     await user.save();
 
-    req.session.save((err) => {
-      if (err) {
-        console.log("SESSION ERROR:", err);
-        return res.status(500).json({ status: "error", message: "Session error" });
-      }
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      SECRET,
+      { expiresIn: "1h" }
+    );
 
-      return res.json({ status: "success" });
+    return res.json({
+      status: "success",
+      token
     });
   } catch (err) {
     console.log("VERIFY OTP ERROR:", err);
@@ -167,13 +171,7 @@ exports.verifyOTP = async (req, res) => {
   }
 };
 
+// LOGOUT
 exports.logout = (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      console.log("LOGOUT ERROR:", err);
-      return res.status(500).json({ status: "error", message: "Logout failed" });
-    }
-
-    return res.json({ status: "logged_out" });
-  });
+  return res.json({ status: "logged_out" });
 };
