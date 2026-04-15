@@ -170,3 +170,111 @@ exports.deleteEmployee = async (req, res) => {
     });
   }
 };
+
+
+// AGGREGATION 1: DEPARTMENT SUMMARY
+exports.getDepartmentSummary = async (req, res) => {
+  try {
+    const result = await Employee.aggregate([
+      {
+        $group: {
+          _id: "$department",
+          totalEmployees: { $sum: 1 },
+          totalSalary: { $sum: "$salary" },
+          averageSalary: { $avg: "$salary" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          department: "$_id",
+          totalEmployees: 1,
+          totalSalary: 1,
+          averageSalary: { $round: ["$averageSalary", 2] }
+        }
+      },
+      {
+        $sort: { totalEmployees: -1 }
+      }
+    ]);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.log("DEPARTMENT SUMMARY ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// AGGREGATION 2: HIGHEST SALARY BY DEPARTMENT
+exports.getHighestSalaryByDepartment = async (req, res) => {
+  try {
+    const result = await Employee.aggregate([
+      { $sort: { department: 1, salary: -1 } },
+      {
+        $group: {
+          _id: "$department",
+          highestPaidEmployee: { $first: "$name" },
+          highestSalary: { $first: "$salary" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          department: "$_id",
+          highestPaidEmployee: 1,
+          highestSalary: 1
+        }
+      }
+    ]);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.log("HIGHEST SALARY ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// AGGREGATION 3: EMPLOYEE LIST WITH AGGREGATION + PAGINATION
+exports.getEmployeesWithAggregation = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 5;
+    const skip = (page - 1) * limit;
+    const keyword = req.query.keyword || "";
+
+    const matchStage = keyword
+      ? {
+          $match: { 
+            $or: [
+              { name: { $regex: keyword, $options: "i" } },
+              { email: { $regex: keyword, $options: "i" } },
+              { department: { $regex: keyword, $options: "i" } }
+            ]
+          }
+        }
+      : { $match: {} };
+
+    const employees = await Employee.aggregate([
+      matchStage,
+      { $sort: { _id: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ]);
+
+    const totalCount = await Employee.aggregate([
+      matchStage,
+      { $count: "total" }
+    ]);
+
+    const total = totalCount.length > 0 ? totalCount[0].total : 0;
+
+    return res.status(200).json({
+      employees,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (err) {
+    console.log("EMPLOYEE AGG ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
